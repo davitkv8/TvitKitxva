@@ -77,7 +77,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         )
         print("======== AUDIO CONTENT RECEIVED ========")
 
-        with open(f"{file.filename}.mp3", "wb") as f:
+        with open(f"{file.filename.split('.')[0]}.mp3", "wb") as f:
             for chunk in audio:
                 f.write(chunk)
 
