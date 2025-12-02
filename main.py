@@ -1,11 +1,11 @@
-import os
+import uvicorn
+
 import shutil
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from pathlib import Path
 
 from elevenlabs.client import ElevenLabs
-from elevenlabs.play import play
 
 from PyPDF2 import PdfReader
 
@@ -87,3 +87,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         "message": "File uploaded and saved successfully",
         "status": 200,
     }
+
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", reload=True)
