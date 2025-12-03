@@ -2,7 +2,7 @@ import uvicorn
 
 import shutil
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from pathlib import Path
 
 from elevenlabs.client import ElevenLabs
@@ -10,6 +10,12 @@ from elevenlabs.client import ElevenLabs
 from PyPDF2 import PdfReader
 
 from email_service import send_mp3_attachment
+
+from pydantic import BaseModel, HttpUrl
+from urllib.parse import urlparse
+import httpx
+import uuid
+import pathlib
 
 app = FastAPI()
 
@@ -23,9 +29,73 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_SIZE = 2 * 1024 * 1024  # 2 MB in bytes
 
 
+class UploadFromUrlPayload(BaseModel):
+    file_url: HttpUrl
+
+
+def validate_source_url(url: str) -> None:
+    """
+    SSRF დაცვისთვის: არ მივცეთ ნებისმიერ URL-ზე request-ის გაკეთების უფლება.
+    ამ შემთხვევაში ვუშვებთ მხოლოდ tawk-ის ჰოსტებს.
+    """
+    host = (urlparse(url).netloc or "").lower()
+    allowed = (
+        host.endswith("tawk.link")
+        or host.endswith("tawk.to")
+        or host.endswith("embed.tawk.to")
+    )
+    if not allowed:
+        raise HTTPException(status_code=400, detail=f"Unsupported file host: {host}")
+
+
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
+
+
+@app.post("/upload-pdf-from-url")
+async def upload_pdf_from_url(
+    payload: UploadFromUrlPayload,
+    recipient_email: str = Query(..., min_length=3),
+):
+    file_url = str(payload.file_url)
+    validate_source_url(file_url)
+
+    # უნიკალური სახელი (სურვილისამებრ ცალკე საქაღალდე email-ით)
+    dest_path = UPLOAD_DIR / f"{uuid.uuid4()}.pdf"
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=60) as client:
+            resp = await client.get(file_url)
+
+            if resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Failed to download file from source (status {resp.status_code})",
+                )
+
+            content_type = (resp.headers.get("content-type") or "").lower()
+            # ზოგჯერ content-type შეიძლება არ იყოს იდეალური, მაგრამ ვეცდებით შევამოწმოთ
+            if ("pdf" not in content_type) and (not file_url.lower().endswith(".pdf")):
+                raise HTTPException(status_code=400, detail=f"Not a PDF (content-type={content_type})")
+
+            # streaming write (დიდ ფაილებზე RAM-ს არ ჭამს)
+            with dest_path.open("wb") as f:
+                async for chunk in resp.aiter_bytes():
+                    f.write(chunk)
+
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Download error: {type(e).__name__}")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Download timeout")
+
+
+    return {
+        "ok": True,
+        "recipient_email": recipient_email,
+        "saved_file": dest_path.name,
+        "source_url": file_url,
+    }
 
 
 @app.post("/upload-pdf")
