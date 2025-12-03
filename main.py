@@ -56,6 +56,62 @@ def validate_source_url(url: str) -> None:
         raise HTTPException(status_code=400, detail=f"Unsupported file host: {host}")
 
 
+def safe_stem(name: str) -> str:
+    """
+    Basic filename stem sanitization (avoid weird chars for filesystem).
+    """
+    stem = (name.rsplit(".", 1)[0] if "." in name else name).strip()
+    stem = "".join(c for c in stem if c.isalnum() or c in ("-", "_", " "))
+    return stem or "document"
+
+
+async def process_pdf_and_email(file_path: pathlib.Path, recipient_email: str, original_filename: str):
+    # 1) Extract text
+    text_parts = []
+    with file_path.open("rb") as f:
+        reader = PdfReader(f)
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text_parts.append(page_text)
+
+    text = "\n".join(text_parts).strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="PDF has no extractable text")
+
+    print("======== PDF CONTENT START ========\n\n\n")
+    print(text)
+    print("======== PDF CONTENT END ==========\n\n\n")
+
+    # 2) ElevenLabs TTS
+    print("======== SENDING PDF TO ELEVENLABS ========")
+    audio = elevenlabs.text_to_speech.convert(
+        text=text,
+        voice_id="JBFqnCBsd6RMkjVDRZzb",
+        model_id="eleven_flash_v2_5",
+        output_format="mp3_22050_32",
+    )
+    print("======== AUDIO CONTENT RECEIVED ========")
+
+    # 3) Save MP3
+    mp3_filename = f"{safe_stem(original_filename)}.mp3"
+    mp3_path = UPLOAD_DIR / mp3_filename
+
+    with mp3_path.open("wb") as f:
+        for chunk in audio:
+            f.write(chunk)
+
+    # 4) Send email
+    mid = send_mp3_attachment(
+        to_email=recipient_email,
+        subject="Your MP3 is ready",
+        mp3_file_path=str(mp3_path),
+    )
+    print(f"Finishing ..... {mid}")
+
+    return {"mp3_file": mp3_filename, "message_id": mid}
+
+
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
@@ -69,8 +125,8 @@ async def upload_pdf_from_url(
     file_url = str(payload.file_url)
     validate_source_url(file_url)
 
-    # უნიკალური სახელი (სურვილისამებრ ცალკე საქაღალდე email-ით)
     dest_path = UPLOAD_DIR / f"{uuid.uuid4()}.pdf"
+    original_filename = dest_path.name  # fallback
 
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=60) as client:
@@ -83,26 +139,39 @@ async def upload_pdf_from_url(
                 )
 
             content_type = (resp.headers.get("content-type") or "").lower()
-            # ზოგჯერ content-type შეიძლება არ იყოს იდეალური, მაგრამ ვეცდებით შევამოწმოთ
             if ("pdf" not in content_type) and (not file_url.lower().endswith(".pdf")):
                 raise HTTPException(status_code=400, detail=f"Not a PDF (content-type={content_type})")
 
-            # streaming write (დიდ ფაილებზე RAM-ს არ ჭამს)
+            # OPTIONAL: try to pick filename from URL
+            # (tawk link often endswith download.pdf anyway)
+            url_tail = file_url.split("/")[-1].split("?")[0]
+            if url_tail:
+                original_filename = url_tail
+
+            # download with size limit (avoid huge files)
+            size = 0
             with dest_path.open("wb") as f:
                 async for chunk in resp.aiter_bytes():
+                    size += len(chunk)
+                    if size > MAX_SIZE:
+                        raise HTTPException(status_code=400, detail="File too large. Max allowed size is 2MB")
                     f.write(chunk)
 
-    except httpx.RequestError as e:
-        raise HTTPException(status_code=502, detail=f"Download error: {type(e).__name__}")
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Download timeout")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Download error: {type(e).__name__}")
 
+    # process (same pipeline as upload-pdf)
+    result = await process_pdf_and_email(dest_path, recipient_email, original_filename)
 
     return {
         "ok": True,
         "recipient_email": recipient_email,
         "saved_file": dest_path.name,
         "source_url": file_url,
+        "status": 200,
+        **result,
     }
 
 
