@@ -3,6 +3,7 @@ import uvicorn
 import shutil
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 
 from elevenlabs.client import ElevenLabs
@@ -18,6 +19,13 @@ import uuid
 import pathlib
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://tvitkitxva.ge", "https://api.tvitkitxva.ge", "0.0.0.0", "127.0.0.1"],
+    allow_methods=["POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
+)
 
 elevenlabs = ElevenLabs(
   api_key="sk_4e851ab64487d8f751cf6fc44ec111aa8097f568ccc318b8",
