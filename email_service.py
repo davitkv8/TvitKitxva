@@ -39,10 +39,3 @@ def send_mp3_attachment(to_email: str, mp3_file_path: str, subject: str = 'áƒ¨áƒ
         Content={"Raw": {"Data": raw_bytes}},
     )
     return resp["MessageId"]
-
-if __name__ == "__main__":
-    mid = send_mp3_attachment(
-        to_email="davit.kv8@gmail.com",
-        subject="Your MP3 is ready",
-        mp3_file_path="out.mp3",
-    )

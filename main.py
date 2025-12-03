@@ -9,6 +9,8 @@ from elevenlabs.client import ElevenLabs
 
 from PyPDF2 import PdfReader
 
+from email_service import send_mp3_attachment
+
 app = FastAPI()
 
 elevenlabs = ElevenLabs(
@@ -77,9 +79,18 @@ async def upload_pdf(file: UploadFile = File(...)):
         )
         print("======== AUDIO CONTENT RECEIVED ========")
 
-        with open(f"{file.filename.split('.')[0]}.mp3", "wb") as f:
+        mp3_filename = f"{file.filename.split('.')[0]}.mp3"
+        with open(mp3_filename, "wb") as f:
             for chunk in audio:
                 f.write(chunk)
+
+        mid = send_mp3_attachment(
+            to_email="davit.kv8@gmail.com",
+            subject="Your MP3 is ready",
+            mp3_file_path="out.mp3",
+        )
+
+        print(f"Finishing ..... {mid}")
 
     return {
         "filename": file.filename,
