@@ -29,7 +29,7 @@ async def root():
 
 
 @app.post("/upload-pdf")
-async def upload_pdf(file: UploadFile = File(...)):
+async def upload_pdf(recipient_email: str, file: UploadFile = File(...)):
     # 1) Basic validation
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
@@ -85,9 +85,9 @@ async def upload_pdf(file: UploadFile = File(...)):
                 f.write(chunk)
 
         mid = send_mp3_attachment(
-            to_email="davit.kv8@gmail.com",
+            to_email=recipient_email,
             subject="Your MP3 is ready",
-            mp3_file_path="out.mp3",
+            mp3_file_path=mp3_filename,
         )
 
         print(f"Finishing ..... {mid}")
