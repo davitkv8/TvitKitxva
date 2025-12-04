@@ -10,7 +10,7 @@ from elevenlabs.client import ElevenLabs
 
 from PyPDF2 import PdfReader
 
-from email_service import send_mp3_attachment
+from email_service import send_email_with_mp3
 
 from pydantic import BaseModel, HttpUrl
 from urllib.parse import urlparse
@@ -85,11 +85,14 @@ async def process_pdf_and_email(file_path: pathlib.Path, recipient_email: str, o
 
     # 2) ElevenLabs TTS
     print("======== SENDING PDF TO ELEVENLABS ========")
+
+    model_id = "eleven_flash_v2_5"
     audio = elevenlabs.text_to_speech.convert(
         text=text,
         voice_id="JBFqnCBsd6RMkjVDRZzb",
-        model_id="eleven_flash_v2_5",
+        model_id=model_id,
         output_format="mp3_22050_32",
+        language_code="geo",
     )
     print("======== AUDIO CONTENT RECEIVED ========")
 
@@ -102,10 +105,9 @@ async def process_pdf_and_email(file_path: pathlib.Path, recipient_email: str, o
             f.write(chunk)
 
     # 4) Send email
-    mid = send_mp3_attachment(
+    mid = send_email_with_mp3(
         to_email=recipient_email,
-        subject="Your MP3 is ready",
-        mp3_file_path=str(mp3_path),
+        mp3_path=str(mp3_path),
     )
     print(f"Finishing ..... {mid}")
 

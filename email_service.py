@@ -1,41 +1,43 @@
-import boto3
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
-from pathlib import Path
+import os
+import base64
+import requests
 
-REGION = "eu-central-1"
-FROM = "davitkvaratskhelia@shipifydev.com"
+RESEND_API_KEY = "re_j8zYKZKg_77Asx1Vy39fAZgzHDWfcw6UN"
 
-ses = boto3.client("sesv2", region_name=REGION)
+def send_email_with_mp3(
+    to_email: str,
+    mp3_path: str,
+    from_email: str = "lasha@tvitkitxva.ge",
+    reply_to: str = "lasha@tvitkitxva.ge",
+):
+    with open(mp3_path, "rb") as f:
+        mp3_b64 = base64.b64encode(f.read()).decode("utf-8")
 
-def send_mp3_attachment(to_email: str, mp3_file_path: str, subject: str = 'შენი ტექსტი მზადაა!'):
+    payload = {
+        "from": from_email,
+        "to": [to_email],
+        "subject": "MP3 ფაილი მზადაა! - tvitkitxva.ge",
+        "text": "🎧 ახლა კი, შეგიძლია მოუსმინო.\n📣 ნებისმიერ დროს შემოდი: tvitkitxva.ge\n-----------\n💜 შესრულებულია TvitKikxvAI მიერ 🤖",
+        "reply_to": reply_to,
+        "attachments": [
+            {
+                "filename": os.path.basename(mp3_path),
+                "content": mp3_b64,
+            }
+        ],
+    }
 
-    text = "შესრულებულია TvitKikxvAI ტექსტის გენერატეორების დეპარტამენტის მიერ.\n\nნებისმიერ დროს შემოდი: tvitkitxva.ge"
-
-    mp3_path = Path(mp3_file_path)
-    if not mp3_path.exists():
-        raise FileNotFoundError(mp3_path)
-
-    msg = MIMEMultipart()
-    msg["Subject"] = subject
-    msg["From"] = FROM
-    msg["To"] = to_email
-
-    msg.attach(MIMEText(text, "plain", "utf-8"))
-
-    part = MIMEBase("audio", "mpeg")
-    part.set_payload(mp3_path.read_bytes())
-    encoders.encode_base64(part)
-    part.add_header("Content-Disposition", f'attachment; filename="{mp3_path.name}"')
-    msg.attach(part)
-
-    raw_bytes = msg.as_bytes()
-
-    resp = ses.send_email(
-        FromEmailAddress=FROM,
-        Destination={"ToAddresses": [to_email]},
-        Content={"Raw": {"Data": raw_bytes}},
+    r = requests.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=30,
     )
-    return resp["MessageId"]
+
+    if r.status_code >= 400:
+        raise RuntimeError(f"Resend error {r.status_code}: {r.text}")
+
+    return r.json()
