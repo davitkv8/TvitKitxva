@@ -92,7 +92,6 @@ async def process_pdf_and_email(file_path: pathlib.Path, recipient_email: str, o
         voice_id="JBFqnCBsd6RMkjVDRZzb",
         model_id=model_id,
         output_format="mp3_22050_32",
-        language_code="geo",
     )
     print("======== AUDIO CONTENT RECEIVED ========")
 
