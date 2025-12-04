@@ -86,12 +86,13 @@ async def process_pdf_and_email(file_path: pathlib.Path, recipient_email: str, o
     # 2) ElevenLabs TTS
     print("======== SENDING PDF TO ELEVENLABS ========")
 
-    model_id = "eleven_flash_v2_5"
+    model_id = "eleven_v3"
     audio = elevenlabs.text_to_speech.convert(
         text=text,
         voice_id="JBFqnCBsd6RMkjVDRZzb",
         model_id=model_id,
         output_format="mp3_22050_32",
+        language_code="ge"
     )
     print("======== AUDIO CONTENT RECEIVED ========")
 
